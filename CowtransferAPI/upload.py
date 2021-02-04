@@ -37,8 +37,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class CowUpload:
-    def __init__(self, slight=False, cookies="1610272831475", **requests_kwargs):
+    def __init__(self, slight=False, silence=True, cookies="1610272831475", **requests_kwargs):
+        self.silence: bool = silence
         self.slight: bool = slight
+        if silence:  # 静默优先级高
+            self.sight = False
         self.requests_kwargs = requests_kwargs
         # ----------------------------网址----------------------------------------
         self._prepareSend: str = "https://cowtransfer.com/transfer/preparesend"
@@ -95,7 +98,7 @@ class CowUpload:
         self.file["original_name"]: str = re.search("[^\\\\]+$", path)[0]  # 上传文件名字
         self.file["name"]: str = parse.quote(self.file["original_name"])  # 上传文件名字(Url编码)
         self.file["path"] = path  # 文件地址
-        if self.slight:  # 详细日志
+        if self.slight and not self.silence:  # 详细日志
             console.log(Rule("[bold yellow]Step 1/7 [/][bold cyan]File Scan[/]"))
             table = RenderGroup(
                 Panel(self.file["name"], title="文件名称", title_align="left"),
@@ -139,7 +142,7 @@ class CowUpload:
                             **self.requests_kwargs)
         self.cookies.update(res.cookies.get_dict())  # 更新cookies中JSESSIONID，SERVERID（必须）
         result = res.json()
-        if self.slight:  # 详细日志
+        if self.slight and not self.silence:  # 详细日志
             console.log(Rule("[bold yellow]Step 2/7 [/][bold cyan]Prepare Upload[/]"))
             self._request_logs(self._prepareSend, res)
         if result["error"]:
@@ -172,7 +175,7 @@ class CowUpload:
         res = requests.post(self._beforeUpload, headers=self.headers, data=multipart, cookies=self.cookies,
                             **self.requests_kwargs)
         result = res.json()
-        if self.slight:  # 详细日志
+        if self.slight and not self.silence:  # 详细日志
             console.log(Rule("[bold yellow]Step 3/7 [/][bold cyan]Before Upload[/]"))
             self._request_logs(self._beforeUpload, res)
         self.fileGuid = result["fileGuid"]
@@ -182,18 +185,19 @@ class CowUpload:
         num = 0
         sum = math.ceil(self.file["size"] / (self._chunk - 135))
         upload_bar = progress.add_task("[cyan]Upload...", total=self.file["size"])
-
-        with open(self.file["path"], "rb") as f:
+        if self.silence:
+            progress.update(upload_bar, visible=False)
+        with open(self.file["path"], "rb") as f:  # 流式上传
             file = bytes()
             # if self.file["size"] < (self._chunk - 123)
             with progress:
                 while True:
-
                     temp = f.read(self._chunk)
                     file += temp
                     if len(temp) != 0:
                         length = len(temp)
                         url = self._uploadInitEndpoint.format(str(length))
+
                         self.uploadHeaders["Content-Type"] = "application/octet-stream; " \
                                                              "boundary=----WebKitFormBoundaryJ2aGzfsg35YqeT7X"
                         res = requests.post(url, headers=self.uploadHeaders, data=temp, **self.requests_kwargs)
@@ -202,8 +206,9 @@ class CowUpload:
                         # 进度条更新
                         progress.update(upload_bar,
                                         advance=len(temp),
-                                        description="[cyan]Upload-[/][magenta]Block:{}/{}...[/]".format(num, sum))
-                        if self.slight:  # 详细日志
+                                        description="[cyan]Upload...[/][magenta]Block:{}/{}[/]".format(num, sum))
+
+                        if self.slight and not self.silence:  # 详细日志
                             console.log(Rule("[bold yellow]Step 4/7 [/][bold cyan]Uploading...[/]"))
                             console.log(
                                 Rule("[bold magenta]Block {}/{} [/][bold cyan]Uploading...[/]".format(num, sum)))
@@ -223,7 +228,7 @@ class CowUpload:
         res = requests.post(url, data=ctx,
                             headers=self.uploadHeaders, **self.requests_kwargs)
         result = res.json()
-        if self.slight:  # 详细日志
+        if self.slight and not self.silence:  # 详细日志
             console.log(Rule("[bold yellow]Step 5/7 [/][bold cyan]Merge File[/]"))
             self._request_logs(url, res)  # 详细日志
         try:
@@ -250,7 +255,7 @@ class CowUpload:
         result = res.json()
         if not result:
             error_console.log(Panel("[bold yellow]上传失败[/]", title="[bold red]错误信息[/]"))
-        if self.slight:  # 详细日志
+        if self.slight and not self.silence:  # 详细日志
             console.log(Rule("[bold yellow]Step 6/7 [/][bold cyan]Uploaded[/]"))
             self._request_logs(self._uploadFinish, res)
 
@@ -267,21 +272,24 @@ class CowUpload:
         res = requests.post(self._uploadComplete, data=multipart, headers=self.headers, cookies=self.cookies,
                             **self.requests_kwargs)
         result = res.json()
-        self.tempDownloadCode: int = result["tempDownloadCode"]
-        if self.slight:  # 详细日志
+        self.raw["tempDownloadCode"]: int = result["tempDownloadCode"]
+        self.raw["complete"]: bool = result["complete"]
+        if self.slight and not self.silence:  # 详细日志
             console.log(Rule("[bold yellow]Step 7/7 [/][bold cyan]Complete Upload[/]"))
             self._request_logs(self._uploadComplete, res)
             console.log(Rule("[bold cyan]详细日志结束[/]"))
         end_time = time.time()
-        if result["complete"]:
+        self.raw['time']: str = (end_time - self.start_time).__str__()
+        if result["complete"] and not self.silence:
+            console.log(Panel(self.file["original_name"], title="文件名称"))
             console.log(
-                Columns([Panel("{}[{}byte]".format(self.file["original_name"], self.file["size"]), title="文件名称"),
-                         Panel("[bold magenta]{}[/]".format((end_time - self.start_time).__str__() + " s"),
+                Columns([Panel("{} Bytes".format(self.file["size"]), title="文件大小"),
+                         Panel("[bold magenta]{}[/]".format(self.raw['time'] + " s"),
                                title="[magenta]消耗时间[/]"),
                          Panel("[bold blue]{}[/]".format(self.raw["uniqueurl"]), title="[blue]下载地址[/]"),
-                         Panel("[bold yellow]{}[/]".format(self.tempDownloadCode), title="[yellow]取件密码[/]")])
-                )
-        else:
+                         Panel("[bold yellow]{}[/]".format(self.raw["tempDownloadCode"]), title="[yellow]取件密码[/]")])
+            )
+        elif not result["complete"]:
             error_console.log(Panel("[bold yellow]上传失败[/]", title="[bold red]错误信息[/]"))
 
     def upload(self,
@@ -297,6 +305,7 @@ class CowUpload:
                language: str = "cn",
                enableDownload: bool = True,
                enablePreview: bool = True
-               ):
-        return self._prepare(path, message, notifyEmail, validDays, saveToMyCloud, downloadTimes, smsReceivers,
-                             emailReceivers, enableShareToOthers, language, enableDownload, enablePreview)
+               ) -> dict:
+        self._prepare(path, message, notifyEmail, validDays, saveToMyCloud, downloadTimes, smsReceivers,
+                      emailReceivers, enableShareToOthers, language, enableDownload, enablePreview)
+        return {'file': self.file, 'raw': self.raw}
