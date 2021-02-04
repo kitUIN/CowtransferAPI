@@ -4,19 +4,24 @@ import math
 import os
 import re
 import time
-from functools import wraps
-from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
+
+from requests_toolbelt import MultipartEncoder
 from urllib import parse
 import requests
 import magic
 import urllib3
 from rich.columns import Columns
 
-from rich.console import Console, ConsoleRenderable, RenderGroup
+from rich.console import Console, RenderGroup
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, FileSizeColumn, TotalFileSizeColumn, \
-    TimeRemainingColumn, TimeElapsedColumn
-from rich.table import Table
+from rich.progress import (Progress,
+                           SpinnerColumn,
+                           TextColumn,
+                           BarColumn,
+                           TimeElapsedColumn,
+                           TransferSpeedColumn,
+                           DownloadColumn)
+
 from rich.rule import Rule
 
 error_console = Console(stderr=True)
@@ -26,18 +31,18 @@ progress = Progress(
     TextColumn("[progress.description]{task.description}"),
     BarColumn(),
     TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-    TextColumn("[progress.speed]{task.speed}"),
-    FileSizeColumn(),
-    TotalFileSizeColumn(),
+    TransferSpeedColumn(),
+    DownloadColumn(),
     TimeElapsedColumn(),
     console=console,
-    # 瞬时 transient=True,
+    transient=True
 )
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class CowUpload:
-    def __init__(self, slight=False, silence=True, cookies="1610272831475", **requests_kwargs):
+    def __init__(self, slight=False, log=False, hash=False, silence=True, cookies="1610272831475", **requests_kwargs):
         self.silence: bool = silence
         self.slight: bool = slight
         if silence:  # 静默优先级高
@@ -117,9 +122,8 @@ class CowUpload:
     def _tobase64(key):
         return base64.b64encode(key).decode()
 
-    def _prepare(self, path, message, notifyEmail, validDays, saveToMyCloud, downloadTimes, smsReceivers,
+    def _prepare(self, message, notifyEmail, validDays, saveToMyCloud, downloadTimes, smsReceivers,
                  emailReceivers, enableShareToOthers, language, enableDownload, enablePreview):
-        self._look_file(path)  # 获取文件属性
         multipart = MultipartEncoder(
             fields={
                 "totalSize": str(self.file["size"]),
@@ -155,7 +159,6 @@ class CowUpload:
         self.raw["uniqueurl"]: str = result["uniqueurl"]
         self.key: str = self.prefix + "/" + self.transferGuid + "/" + self.file["name"]
         self._key: str = self._tobase64(self.key.encode("utf-8"))
-        return self._before()
 
     def _before(self):
         multipart = MultipartEncoder(
@@ -179,46 +182,40 @@ class CowUpload:
             console.log(Rule("[bold yellow]Step 3/7 [/][bold cyan]Before Upload[/]"))
             self._request_logs(self._beforeUpload, res)
         self.fileGuid = result["fileGuid"]
-        return self._uploader()
 
     def _uploader(self):
         num = 0
-        sum = math.ceil(self.file["size"] / (self._chunk - 135))
-        upload_bar = progress.add_task("[cyan]Upload...", total=self.file["size"])
-        if self.silence:
-            progress.update(upload_bar, visible=False)
+        sum = math.ceil(self.file["size"] / self._chunk)
+        upload_bar = progress.add_task("[cyan]Upload...", total=self.file["size"], visible=not self.silence)
         with open(self.file["path"], "rb") as f:  # 流式上传
             file = bytes()
             # if self.file["size"] < (self._chunk - 123)
-            with progress:
-                while True:
-                    temp = f.read(self._chunk)
-                    file += temp
-                    if len(temp) != 0:
-                        length = len(temp)
-                        url = self._uploadInitEndpoint.format(str(length))
+            while True:
+                temp = f.read(self._chunk)
+                file += temp
+                if len(temp) != 0:
+                    length = len(temp)
+                    url = self._uploadInitEndpoint.format(str(length))
 
-                        self.uploadHeaders["Content-Type"] = "application/octet-stream; " \
-                                                             "boundary=----WebKitFormBoundaryJ2aGzfsg35YqeT7X"
-                        res = requests.post(url, headers=self.uploadHeaders, data=temp, **self.requests_kwargs)
-                        result = res.json()
-                        num += 1
-                        # 进度条更新
-                        progress.update(upload_bar,
-                                        advance=len(temp),
-                                        description="[cyan]Upload...[/][magenta]Block:{}/{}[/]".format(num, sum))
-
-                        if self.slight and not self.silence:  # 详细日志
-                            console.log(Rule("[bold yellow]Step 4/7 [/][bold cyan]Uploading...[/]"))
-                            console.log(
-                                Rule("[bold magenta]Block {}/{} [/][bold cyan]Uploading...[/]".format(num, sum)))
-                            self._request_logs(url, res, True, str(length))
-                        self._ctx.append(result["ctx"])
-                        self.offset += result["offset"]
-                    else:
-                        self.fileHash = hash(file)
-                        break
-        return self._merge_file()
+                    self.uploadHeaders["Content-Type"] = "application/octet-stream; " \
+                                                         "boundary=----WebKitFormBoundaryJ2aGzfsg35YqeT7X"
+                    res = requests.post(url, headers=self.uploadHeaders, data=temp, **self.requests_kwargs)
+                    result = res.json()
+                    num += 1
+                    # 进度条更新
+                    progress.update(upload_bar,
+                                    advance=len(temp),
+                                    description="[cyan]Upload... [/][magenta]File_Block:{}/{}[/]".format(num, sum))
+                    if self.slight and not self.silence:  # 详细日志
+                        console.log(Rule("[bold yellow]Step 4/7 [/][bold cyan]Uploading...[/]"))
+                        console.log(
+                            Rule("[bold magenta]Block {}/{} [/][bold cyan]Uploading...[/]".format(num, sum)))
+                        self._request_logs(url, res, True, str(length))
+                    self._ctx.append(result["ctx"])
+                    self.offset += result["offset"]
+                else:
+                    self.fileHash = hash(file)
+                    break
 
     def _merge_file(self):
         fname = self._tobase64(self.file["name"].encode("utf-8"))
@@ -235,7 +232,6 @@ class CowUpload:
             self.raw["hash"]: str = result["hash"]
         except KeyError:
             error_console.log(Panel("[yellow]{}[/yellow]".format(result["error"]), title="[bold red]错误信息[/]"))
-        return self._uploaded()
 
     def _uploaded(self):
         multipart = MultipartEncoder(
@@ -259,8 +255,6 @@ class CowUpload:
             console.log(Rule("[bold yellow]Step 6/7 [/][bold cyan]Uploaded[/]"))
             self._request_logs(self._uploadFinish, res)
 
-        return self._complete()
-
     def _complete(self):
         multipart = MultipartEncoder(
             fields={
@@ -281,11 +275,9 @@ class CowUpload:
         end_time = time.time()
         self.raw['time']: str = (end_time - self.start_time).__str__()
         if result["complete"] and not self.silence:
-            console.log(Panel(self.file["original_name"], title="文件名称"))
             console.log(
-                Columns([Panel("{} Bytes".format(self.file["size"]), title="文件大小"),
-                         Panel("[bold magenta]{}[/]".format(self.raw['time'] + " s"),
-                               title="[magenta]消耗时间[/]"),
+                Columns([Panel(self.file["original_name"], title="文件名称"),
+                         Panel("{} Bytes".format(self.file["size"]), title="文件大小"),
                          Panel("[bold blue]{}[/]".format(self.raw["uniqueurl"]), title="[blue]下载地址[/]"),
                          Panel("[bold yellow]{}[/]".format(self.raw["tempDownloadCode"]), title="[yellow]取件密码[/]")])
             )
@@ -306,6 +298,13 @@ class CowUpload:
                enableDownload: bool = True,
                enablePreview: bool = True
                ) -> dict:
-        self._prepare(path, message, notifyEmail, validDays, saveToMyCloud, downloadTimes, smsReceivers,
-                      emailReceivers, enableShareToOthers, language, enableDownload, enablePreview)
+        with progress:
+            self._look_file(path)
+            self._prepare(message, notifyEmail, validDays, saveToMyCloud, downloadTimes, smsReceivers,
+                          emailReceivers, enableShareToOthers, language, enableDownload, enablePreview)
+            self._before()
+            self._uploader()
+            self._merge_file()
+            self._uploaded()
+            self._complete()
         return {'file': self.file, 'raw': self.raw}

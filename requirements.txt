@@ -1,9 +1,9 @@
-typer
-rich
+typer~=0.3.2
+rich~=9.10.0
 colorama
 shellingham
-python-magic
+python-magic~=0.4.18
 python-magic-bin
-
-requests
+requests~=2.25.1
 requests_toolbelt
+urllib3~=1.26.3
