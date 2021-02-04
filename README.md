@@ -1,5 +1,5 @@
 # cowtransfer-api
-https://cowtransfer.com/奶牛快传的第三方api
+https://cowtransfer.com 奶牛快传的第三方api
 简洁的api静默模式  
 美观的命令行模式  
 还在制作中  
@@ -13,7 +13,7 @@ https://cowtransfer.com/奶牛快传的第三方api
       - [x] 列
       - [x] 分隔符
   - [x] 进度条展示
-  - ~~全动态输出~~**（由于与进度条不能共存，已被遗弃）**
+  - ~~全动态输出~~**（由于与进度条不能共存，已被遗弃(ps:要是有人会请务必教我)）**
   - [x] 详细日志报告
 - [x] 命令行调用
 - 上传
