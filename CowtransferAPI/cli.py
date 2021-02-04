@@ -4,21 +4,6 @@ from CowtransferAPI.upload import CowUpload
 from CowtransferAPI.__version__ import __version__
 
 app = typer.Typer()
-sli = None
-sil = None
-
-
-def main(slight: Optional[bool] = typer.Option(False, help="是否开启精细化日志"),
-         silence: Optional[bool] = typer.Option(False, help="是否开启静默模式")):
-    """上传文件
-
-        Args:
-            silence[bool] = 精细日志[默认：False]
-            silence[bool] = 静默模式[默认：False]
-        """
-    global sli, sil
-    sli = slight
-    sil = silence
 
 
 @app.command()
@@ -31,23 +16,15 @@ def version():
 
 @app.command()
 def upload(path: str = typer.Argument(..., help="请输入您需要上传文件的路径"),
-           cookie: str = typer.Argument('1610272831475'),
-           proxies: dict = typer.Argument(None),
-           verify: bool = typer.Argument(True),
-           ):
+           cookie: str = typer.Argument('1610272831475', help="上传所需的cookie: cf-cs-k-20181214"),
+           proxies: str = typer.Argument(None, help="代理端口例如127.0.0.1:10809"),
+           verify: bool = typer.Argument(True, help="是否检查证书"),
+           slight: bool = typer.Option(False, help="是否开启精细化日志"),
+           silence: bool = typer.Argument(False, help="是否开启静默模式")):
     """上传文件
-
-    Args:
-        path[str]: 您需要上传文件的路径[默认：None]
-        cookie[str]: 上传所需的cookie "cf-cs-k-20181214"[默认：'1610272831475']
-        proxies[dict]: 代理端口[默认：None] 例如{"http": "127.0.0.1:10809"}
-
-        verify[bool] = 检查证书[默认：True]
-        silence[bool] = 静默模式[默认：False]
     """
-    upload_session = CowUpload(sli, cookies=cookie, silence=sil, proxies=proxies, verify=verify)
+    upload_session = CowUpload(slight, cookies=cookie, silence=silence, proxies={'http': proxies}, verify=verify)
     upload_session.upload(path=path)
 
 
-if __name__ == "__main__":
-    app()
+

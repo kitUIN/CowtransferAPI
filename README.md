@@ -1,9 +1,21 @@
-# cowtransfer-api
-https://cowtransfer.com 奶牛快传的第三方api
-简洁的api静默模式  
-美观的命令行模式  
+# CowtransferAPI
+https://cowtransfer.com 奶牛快传的第三方api  
+**简洁的api静默模式**  
+**美观的命令行模式**  
 还在制作中  
 隔壁go语言→[传送门](https://github.com/Mikubill/cowtransfer-uploader)
+# 图片  
+![上传文件](https://www.helloimg.com/images/2021/02/04/upload100-00-00--00-00-3014d32e1205ca6c0d.gif)
+![上传文件](https://www.helloimg.com/images/2021/02/04/upload295b7a0aad835c67.png "上传文件")  
+# 快速使用
+- 此包需要 Python 3.6 或更新版本。
+- `pip install PicImageSearch`
+- 或者 `pip install PicImageSearch -i https://pypi.tuna.tsinghua.edu.cn/simple`
+```
+#命令行模式
+ python -m CowtransferAPI upload C:\Users\kuluj\Downloads\PCQQ2020.exe
+#python -m CowtransferAPI upload [文件地址]
+```
 # TODO
 - 美化
   - [x] 彩色输出
